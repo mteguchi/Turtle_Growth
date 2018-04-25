@@ -1,0 +1,49 @@
+---
+title: "Sea turtlle growth modeling"
+output: html_notebook
+---
+
+
+```{r echo=FALSE}
+library(ggplot2)
+library(dplyr)
+```
+
+This project aims to look at how proper sampling and analyses are necessary to understand somatic growth of marine turtles. In this project, we simulate growths of turtles and their capture-recapture data. Then, the "collected" data are used to estimate growths. A variety of sampling designs are used to elucidate what kind of bias is possible. 
+
+First, we simulate a population of turtles that grow with a known function with some variabilities around the parameters. We start with the von Bertalanffy growth function. 
+
+Let's assume that there are 100 turtles in an aggregation (e.g., foraging, nesting). They grow in a similar manner as they are exposed to a common environment.
+
+```{r}
+Linf.true <- 120
+k.true <- 0.2
+t0 <- -0.5
+
+# define a function to compute von Bertalanffy growth function. 
+# this assumes known age in tvec. 
+vonBert <- function(tvec, k, t0, Linf){
+  Lt <- Linf * (1 - exp(-k * (tvec - t0)))
+  return(Lt)
+}
+
+```
+
+The above function (vonBert) computes deterministic values of length at age, given three parameters (k, t0, and Linf). We need to add some stochasticity around this deterministic function. So, Lt.obs = E[Lt] + et, where et comes from some function; the most likely one is normal distribution with mean zero and variance, which should be a function of Lt. Variance should increase as Lt increases - but perhaps CV remains the same. 
+
+```{r}
+CV.true <- 0.1
+
+# this function adds some stochasticity, which is defined by CV and normal
+# deviates, to vB growth
+vonBert_stoc <- function(tvec, k, t0, Linf, CV){
+  Lt <- vonBert(tvec, k, t0, Linf)
+  Lt.obs <- Lt + rnorm(n = length(Lt), mean = 0, sd = Lt * CV)
+  return(Lt.obs)
+}
+
+```
+
+
+
+
