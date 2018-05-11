@@ -35,15 +35,30 @@ The above function (vonBert) computes deterministic values of length at age, giv
 CV.true <- 0.1
 
 # this function adds some stochasticity, which is defined by CV and normal
-# deviates, to vB growth
+# deviates, to vB growth. Error has to be positive as they can't shrink... 
 vonBert_stoc <- function(tvec, k, t0, Linf, CV){
   Lt <- vonBert(tvec, k, t0, Linf)
-  Lt.obs <- Lt + rnorm(n = length(Lt), mean = 0, sd = Lt * CV)
-  return(Lt.obs)
+  Lt.obs <- Lt + rnorm(n = length(Lt), mean = 0, sd = CV * Lt)
+  return(list(Lt = Lt, Lt.obs = Lt.obs))
 }
 
 ```
 
+So, for example, we can set parameters and time vector and simulate data.
+
+```{r}
+# time in years
+tvec <- 0:50
+Lt <- vonBert_stoc(tvec, k.true, t0, Linf.true, )
+
+data.df <- data.frame(time = tvec,
+                      Lt.obs = Lt$Lt.obs,
+                      Lt.true = Lt$Lt)
+ggplot(data = data.df) + 
+  geom_line(aes(x = time, y = Lt.true)) + 
+  geom_line(aes(x = time, y = Lt.obs),
+            color = 'red')
+```
 
 
 
