@@ -11,54 +11,149 @@ library(dplyr)
 
 This project aims to look at how proper sampling and analyses are necessary to understand somatic growth of marine turtles. In this project, we simulate growths of turtles and their capture-recapture data. Then, the "collected" data are used to estimate growths. A variety of sampling designs are used to elucidate what kind of bias is possible. 
 
-First, we simulate a population of turtles that grow with a known function with some variabilities around the parameters. We start with the von Bertalanffy growth function. 
+#Turtle growth
+The growth of a turtle is defined according to a mathematical function. The first example is the von Bertalanffy equation, which has three parameters: Linf, k and t0.
 
-Let's assume that there are 100 turtles in an aggregation (e.g., foraging, nesting). They grow in a similar manner as they are exposed to a common environment.
+Lt = Linf * (1 - exp(-k * (t - t0)))
+
+Lt: the length at age t
+Linf: the asymptotic length
+k: growth coefficient
+t0: age at length 0 (theoretical age)
+
+```{r}
+# define a function to compute von Bertalanffy growth function. 
+# this assumes known age in tvec. 
+vonBert <- function(tvec, k, t0, Linf){
+  Lt <- Linf * (1 - exp(-k * (tvec - t0)))
+  
+  return(data.frame(time = tvec, Lt = Lt))
+}
+
+```
+
+The above function (vonBert) computes deterministic values of length at age, given three parameters (k, t0, and Linf). For example, Linf = 120, k = 0.2, t0 = -0.5 result iin the following curve:
 
 ```{r}
 Linf.true <- 120
 k.true <- 0.2
 t0 <- -0.5
 
-# define a function to compute von Bertalanffy growth function. 
-# this assumes known age in tvec. 
-vonBert <- function(tvec, k, t0, Linf){
-  Lt <- Linf * (1 - exp(-k * (tvec - t0)))
-  return(Lt)
-}
-
-```
-
-The above function (vonBert) computes deterministic values of length at age, given three parameters (k, t0, and Linf). We need to add some stochasticity around this deterministic function. So, Lt.obs = E[Lt] + et, where et comes from some function; the most likely one is normal distribution with mean zero and variance, which should be a function of Lt. Variance should increase as Lt increases - but perhaps CV remains the same. 
-
-```{r}
-CV.true <- 0.1
-
-# this function adds some stochasticity, which is defined by CV and normal
-# deviates, to vB growth. Error has to be positive as they can't shrink... 
-vonBert_stoc <- function(tvec, k, t0, Linf, CV){
-  Lt <- vonBert(tvec, k, t0, Linf)
-  Lt.obs <- Lt + rnorm(n = length(Lt), mean = 0, sd = CV * Lt)
-  return(list(Lt = Lt, Lt.obs = Lt.obs))
-}
-
-```
-
-So, for example, we can set parameters and time vector and simulate data.
-
-```{r}
-# time in years
 tvec <- 0:50
-Lt <- vonBert_stoc(tvec, k.true, t0, Linf.true, )
-
-data.df <- data.frame(time = tvec,
-                      Lt.obs = Lt$Lt.obs,
-                      Lt.true = Lt$Lt)
-ggplot(data = data.df) + 
-  geom_line(aes(x = time, y = Lt.true)) + 
-  geom_line(aes(x = time, y = Lt.obs),
-            color = 'red')
+Lt_k02.df <- vonBert(tvec, k = k.true, t0 = t0, Linf = Linf.true)
+ggplot(data = Lt_k02.df) + 
+  geom_line(aes(x = time, y = Lt))
 ```
 
+Effects of the growth coefficient parameter (k) can be seen in the following plot, where k is varied.
 
+```{r}
+Lt_k02.df$k <- 0.2
+
+Lt_k05.df <- vonBert(tvec, k = 0.5, t0 = t0, Linf = Linf.true)
+Lt_k05.df$k <- 0.5
+
+Lt_k07.df <- vonBert(tvec, k = 0.7, t0 = t0, Linf = Linf.true)
+Lt_k07.df$k <- 0.7
+
+Lt_k01.df <- vonBert(tvec, k = 0.1, t0 = t0, Linf = Linf.true)
+Lt_k01.df$k <- 0.1
+
+Lt.df <- rbind(Lt_k01.df, Lt_k02.df, Lt_k05.df, Lt_k07.df)
+
+Lt.df$f.k <- as.factor(Lt.df$k)  
+ggplot(data = Lt.df) + 
+  geom_line(aes(x = time, y = Lt, color = f.k),
+            size = 1.2) + 
+  labs(color = "k", x = "age", y = "length")
+
+```
+
+Larger values of k make faster growth. 
+
+Because of the function definition, the length at age 0 is not zero. 
+
+For the purpose of this study, we can fix the growth coefficient (k) for each individual, while k comes from a distribution for the simulated population. For example, we may set the mean of k to be 0.1 with standard deviation 0.02.
+
+```{r}
+k <- seq(from = 0.01, to = 0.19, by = 0.001)
+ggplot(data = data.frame(k = k,
+                         density = dnorm(k, mean = 0.1, sd = 0.02))) + 
+  geom_line(aes(x = k, y = density))
+```
+
+Using this distribution, 100 individuals may show the following distribution in growth. The red line indicates the mean k value (0.1). 
+
+```{r}
+n.indiv <- 100
+k.rand <- rnorm(n.indiv, mean = 0.1, sd = 0.02)
+Lt.vec <- apply(array(k.rand), 
+                MARGIN = 1,
+                FUN = function(tvec, k, t0, Linf){
+                  Lt <- Linf * (1 - exp(-k * (tvec - t0)))
+                  
+                  return(Lt)
+                }, 
+                tvec = tvec, 
+                t0 = t0, 
+                Linf = Linf.true)
+Lt.df <- as.data.frame(Lt.vec)
+colnames(Lt.df) <- 1:n.indiv
+Lt.df %>%  
+  mutate(time = tvec) %>%
+  reshape::melt("time") -> Lt.df
+
+ggplot() +
+  geom_line(data = Lt.df,
+            aes(x=time, y = value, group = variable)) + 
+  geom_line(data = Lt_k01.df,
+            aes(x = time, y = Lt),
+            color = 'red', size = 1.2) + 
+  labs( x = "age", y = "length")
+```
+
+The asymptotic length may differ among individuals. The asymptotic length can be correlated with the growth coefficient (k). For example, lager k values may result in longer lengths. For now, I just create a random asymptotic length (Linf). 
+
+```{r}
+Linf.vec <- rnorm(n = n.indiv, mean = Linf.true, sd = 5)
+Linf_k <- cbind(k.rand, Linf.vec)
+Lt.vec <- apply(Linf_k, 
+                MARGIN = 1,
+                FUN = function(tvec, x, t0){
+                  Lt <- x[2] * (1 - exp(-x[1] * (tvec - t0)))
+                  
+                  return(Lt)
+                }, 
+                tvec = tvec, 
+                t0 = t0)
+Lt.df <- as.data.frame(Lt.vec)
+colnames(Lt.df) <- 1:n.indiv
+Lt.df %>%  
+  mutate(time = tvec) %>%
+  reshape::melt("time") -> Lt.df.long
+
+ggplot() +
+  geom_line(data = Lt.df.long,
+            aes(x=time, y = value, group = variable)) + 
+  geom_line(data = Lt_k01.df,
+            aes(x = time, y = Lt),
+            color = 'red', size = 1.2) + 
+  labs( x = "age", y = "length")
+```
+
+The length distribution at a given age should be nearly normal. The following plot shows the distribution at age 10, 20, 30, and 40. 
+
+```{r}
+Lt.df %>% mutate(time = tvec) %>%
+  filter(time == 10 | time == 20 | time == 30 | time == 40) %>%
+  reshape::melt("time") %>%
+  mutate(f.time = as.factor(time)) -> Lt.df.subset
+ggplot(data = Lt.df.subset) + 
+  geom_density(aes(value)) +  
+  facet_grid(.~time) + 
+  labs(x = "Length")
+```
+
+#Sampling
+These turtles then are sampled randomly over time and length measured. These data will be also simulated based on their true sizes at the time of sampling. 
 
